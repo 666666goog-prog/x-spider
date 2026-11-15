@@ -12,6 +12,12 @@ export const DEFAULT_SETTINGS: Settings = {
     fileNameTemplate:
       '%POST_TIME% %USER_SCREEN_NAME% %POST_ID%-%MEDIA_INDEX%%EXT%',
     sameFileSkip: true,
+    classifyByAuthor: true,
+    classifyByType: true,
+    classifyByDate: false,
+    fileNameWithDate: true,
+    fileNameWithAuthor: true,
+    fileNameWithPostId: true,
   },
   app: {
     autoCheckUpdate: true,
@@ -20,4 +26,4 @@ export const DEFAULT_SETTINGS: Settings = {
   },
 };
 
-export const CURRENT_SETTINGS_VERSION = 2;
+export const CURRENT_SETTINGS_VERSION = 3;

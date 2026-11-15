@@ -48,8 +48,24 @@ export const useSettingsStore = create(
         };
       },
       migrate(state: any, version) {
+        if (!state?.download) {
+          return state;
+        }
+
         if (version === 1) {
           delete state.download.savePath;
+        }
+
+        if (version < 3) {
+          state.download = {
+            classifyByAuthor: true,
+            classifyByType: true,
+            classifyByDate: false,
+            fileNameWithDate: true,
+            fileNameWithAuthor: true,
+            fileNameWithPostId: true,
+            ...state.download,
+          };
         }
 
         return state;

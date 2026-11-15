@@ -59,17 +59,39 @@ async function prepareDownloadTask({
     media,
     post,
   };
-  const resolvedDirName = settings.download.dirTemplate
-    ? resolveVariables(settings.download.dirTemplate, templateData)
+  const downloadSettings = settings.download;
+  const dirSegments: string[] = [];
+  if (downloadSettings.classifyByAuthor ?? true) {
+    dirSegments.push('%USER_SCREEN_NAME%');
+  }
+  if (downloadSettings.classifyByDate ?? false) {
+    dirSegments.push('%POST_TIME,d=1%');
+  }
+  if (downloadSettings.classifyByType ?? true) {
+    dirSegments.push('%MEDIA_TYPE%');
+  }
+  const dirTemplate = dirSegments.join('\\');
+  const resolvedDirName = dirTemplate
+    ? resolveVariables(dirTemplate, templateData)
     : '';
   log().info('resolved dirName', resolvedDirName);
   const dir = await path.join(settings.download.saveDirBase, resolvedDirName);
   log().info('resolved dir', dir);
 
-  const fileName = resolveVariables(
-    settings.download.fileNameTemplate,
-    templateData,
+  const fileNameSegments: string[] = [];
+  if (downloadSettings.fileNameWithDate ?? true) {
+    fileNameSegments.push('%POST_TIME%');
+  }
+  if (downloadSettings.fileNameWithAuthor ?? true) {
+    fileNameSegments.push('%USER_SCREEN_NAME%');
+  }
+  fileNameSegments.push(
+    (downloadSettings.fileNameWithPostId ?? true)
+      ? '%POST_ID%-%MEDIA_INDEX%%EXT%'
+      : '%MEDIA_INDEX%%EXT%',
   );
+  const fileNameTemplate = fileNameSegments.join(' ');
+  const fileName = resolveVariables(fileNameTemplate, templateData);
 
   log().info('resolved fileName', fileName);
 

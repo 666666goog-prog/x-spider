@@ -1,13 +1,16 @@
 /* eslint-disable react/prop-types */
-import { App, Avatar, Form, Input, Modal } from 'antd';
-import React, { useEffect, useState } from 'react';
+import { App, Avatar, Button, Divider, Input, Modal } from 'antd';
+import React, { useEffect, useRef, useState } from 'react';
 import { useAppStateStore } from '../stores/app-state';
 import { getAccountInfo } from '../twitter/api';
 import { TwitterAccountInfo } from '../interfaces/TwitterAccountInfo';
-import { LogoutOutlined, QuestionCircleOutlined } from '@ant-design/icons';
-import FormItem from 'antd/es/form/FormItem';
-import { useForm } from 'antd/es/form/Form';
+import { LogoutOutlined } from '@ant-design/icons';
 import { parseCookie, stringifyCookie } from '../utils/cookie';
+import {
+  startBrowserLogin,
+  stopBrowserLogin,
+  waitForLoginCookies,
+} from '../utils/browser-login';
 import clsx from 'clsx';
 
 export const Account: React.FC = () => {
@@ -16,12 +19,14 @@ export const Account: React.FC = () => {
     state.setCookieString,
   ]);
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalLoading, setModalLoading] = useState(false);
   const [accountInfo, setAccountInfo] = useState<TwitterAccountInfo | null>(
     null,
   );
   const [loading, setLoading] = useState(false);
-  const [form] = useForm();
+  const [waiting, setWaiting] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const [pasteLoading, setPasteLoading] = useState(false);
+  const stopWaitingRef = useRef(false);
   const { message } = App.useApp();
 
   useEffect(() => {
@@ -31,8 +36,8 @@ export const Account: React.FC = () => {
       } else {
         setLoading(true);
         try {
-          const accountInfo = await getAccountInfo(cookieString);
-          setAccountInfo(accountInfo);
+          const info = await getAccountInfo(cookieString);
+          setAccountInfo(info);
         } catch (err: any) {
           message.error('获取账号信息失败，请检查 Cookie 或代理配置是否正确');
           log.error(err);
@@ -43,28 +48,105 @@ export const Account: React.FC = () => {
     })();
   }, [cookieString]);
 
-  const onFormFinished = async (values: any) => {
-    setModalLoading(true);
-    const newCookieString = stringifyCookie(values);
+  const handleBrowserLogin = async () => {
+    stopWaitingRef.current = false;
+    setWaiting(true);
+    try {
+      await startBrowserLogin();
+    } catch (err: any) {
+      setWaiting(false);
+      log.error(err);
+      message.error(
+        typeof err === 'string' ? err : '打开浏览器失败，请再试一次',
+      );
+      return;
+    }
+
+    const result = await waitForLoginCookies(() => stopWaitingRef.current);
+
+    if (!result) {
+      setWaiting(false);
+      if (!stopWaitingRef.current) {
+        message.error('等待登录超时，请再试一次');
+        try {
+          await stopBrowserLogin();
+        } catch {
+          // ignore
+        }
+      }
+      return;
+    }
 
     try {
-      const accountInfo = await getAccountInfo(newCookieString);
-      setAccountInfo(accountInfo);
+      const info = await getAccountInfo(result);
+      setAccountInfo(info);
+      setCookieString(result);
       setModalOpen(false);
-      setCookieString(newCookieString);
+      message.success(`已登录：@${info.screenName}`);
     } catch (err: any) {
       log.error(err);
-      message.error('无法登录，请检查 Cookie 或代理配置是否正确');
+      message.error('登录没有成功，请再试一次');
     } finally {
-      setModalLoading(false);
+      setWaiting(false);
+      try {
+        await stopBrowserLogin();
+      } catch {
+        // ignore
+      }
     }
   };
 
-  const onModalOk = async () => {
-    form.submit();
+  const handleCancelWaiting = async () => {
+    stopWaitingRef.current = true;
+    setWaiting(false);
+    try {
+      await stopBrowserLogin();
+    } catch {
+      // ignore
+    }
   };
 
-  const cookies = parseCookie(cookieString);
+  const handleModalCancel = async () => {
+    if (waiting) {
+      await handleCancelWaiting();
+    }
+    setModalOpen(false);
+  };
+
+  const handlePasteSave = async () => {
+    const text = pasteText.trim().replace(/^cookie\s*:\s*/i, '');
+    if (!text) {
+      message.error('请先粘贴 Cookie');
+      return;
+    }
+
+    const parsed = parseCookie(text);
+    const authToken = parsed['auth_token'];
+    const ct0 = parsed['ct0'];
+    if (!authToken || !ct0) {
+      message.error('粘贴的内容里必须包含 auth_token 和 ct0');
+      return;
+    }
+
+    const newCookieString = stringifyCookie({
+      auth_token: authToken,
+      ct0,
+    });
+
+    setPasteLoading(true);
+    try {
+      const info = await getAccountInfo(newCookieString);
+      setAccountInfo(info);
+      setCookieString(newCookieString);
+      setModalOpen(false);
+      message.success(`已登录：@${info.screenName}`);
+    } catch (err: any) {
+      log.error(err);
+      message.error('登录没有成功，请检查粘贴的内容或代理配置是否正确');
+    } finally {
+      setPasteLoading(false);
+    }
+  };
 
   return (
     <>
@@ -124,81 +206,47 @@ export const Account: React.FC = () => {
         </section>
       </div>
       <Modal
-        onOk={onModalOk}
-        confirmLoading={modalLoading}
-        onCancel={() => setModalOpen(false)}
+        onCancel={handleModalCancel}
         open={modalOpen}
-        title="设置 Twitter 的 Cookie"
+        title="登录 X"
+        footer={null}
       >
-        <Form
-          labelCol={{ span: 5 }}
-          form={form}
-          className="mt-4"
-          onFinish={onFormFinished}
-          initialValues={cookies}
-        >
-          <FormItem
-            name="auth_token"
-            label="auth_token"
-            rules={[
-              {
-                type: 'string',
-                required: true,
-              },
-            ]}
-          >
-            <Input placeholder="名称为 auth_token 的值" />
-          </FormItem>
-          <FormItem
-            name="ct0"
-            label="ct0"
-            rules={[
-              {
-                type: 'string',
-                required: true,
-              },
-            ]}
-          >
-            <Input placeholder="名称为 ct0 的值" />
-          </FormItem>
-        </Form>
-        <p className="mt-2">
-          <button
-            onClick={() => {
-              Modal.confirm({
-                title: '寻找 CookieString 的方法',
-                icon: null,
-                content: (
-                  <>
-                    <p>1. 打开推特并登录。</p>
-                    <p>2. 按【F12】打开开发者工具。</p>
-                    <p>3. 找到【应用程序（Applications）】选项卡。</p>
-                    <p>
-                      4.
-                      在左侧列表中找到【Cookie】，展开并选中【https://twitter.com】。
-                    </p>
-                    <p>
-                      5.
-                      在右侧找到名称为【auth_token】和【ct0】的项目，复制相应值填写表单即可。
-                    </p>
-                  </>
-                ),
-              });
-            }}
-            className="text-ant-color-link flex items-center bg-transparent"
-          >
-            <QuestionCircleOutlined
-              className="transform translate-y-[0.6px]"
-              aria-hidden
-            />
-            <span className="ml-1">寻找 CookieString 的方法</span>
-          </button>
+        <p className="mt-4">
+          点下面的按钮会打开一个浏览器窗口，在里面像平时一样登录
+          X，登录成功后这里会自动完成，不用做别的。
         </p>
-        {modalLoading && (
-          <span className="sr-only" role="status">
-            登录中，请稍候
-          </span>
+        {!waiting ? (
+          <Button
+            type="primary"
+            block
+            className="mt-4"
+            onClick={handleBrowserLogin}
+          >
+            打开浏览器登录
+          </Button>
+        ) : (
+          <div className="mt-4">
+            <p role="status">等待登录中…在打开的窗口里完成登录即可</p>
+            <Button block className="mt-3" onClick={handleCancelWaiting}>
+              取消
+            </Button>
+          </div>
         )}
+        <Divider />
+        <Input.TextArea
+          rows={4}
+          placeholder="或者把整串 Cookie 粘贴到这里"
+          value={pasteText}
+          onChange={(e) => setPasteText(e.target.value)}
+        />
+        <Button
+          block
+          className="mt-3"
+          loading={pasteLoading}
+          onClick={handlePasteSave}
+        >
+          保存并校验
+        </Button>
       </Modal>
     </>
   );

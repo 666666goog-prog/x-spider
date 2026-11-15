@@ -140,7 +140,15 @@ export const REPLACER_MAP: Record<
   },
   MEDIA_TYPE: {
     desc: '媒体类型',
-    replacer: (data) => data.media.type,
+    replacer: (data) => {
+      const typeMap: Record<string, string> = {
+        photo: '图片',
+        video: '视频',
+        animated_gif: '动图',
+      };
+      const type = data.media.type as string;
+      return typeMap[type] ?? type;
+    },
   },
   EXT: {
     desc: '扩展名',

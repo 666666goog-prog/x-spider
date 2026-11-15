@@ -109,17 +109,74 @@ pub async fn network_fetch(
     headers: resp_headers })
 }
 
+fn proxy_authority(raw: &str) -> Option<String> {
+  let trimmed = raw.trim();
+  if trimmed.is_empty() {
+    return None;
+  }
+  let without_scheme = trimmed.rsplit("://").next().unwrap_or(trimmed);
+  let authority = without_scheme.split('/').next().unwrap_or("");
+  let host_port = authority.rsplit('@').next().unwrap_or(authority);
+  if host_port.is_empty() {
+    None
+  } else {
+    Some(host_port.to_string())
+  }
+}
+
+#[cfg(windows)]
+fn read_windows_system_proxy(mapped_proxies: &mut HashMap<String, String>) {
+  use winreg::enums::HKEY_CURRENT_USER;
+  use winreg::RegKey;
+
+  let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+  let key = match hkcu.open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings") {
+    Ok(key) => key,
+    Err(_) => return,
+  };
+  let enabled: u32 = key.get_value("ProxyEnable").unwrap_or(0);
+  if enabled == 0 {
+    return;
+  }
+  let server: String = match key.get_value("ProxyServer") {
+    Ok(server) => server,
+    Err(_) => return,
+  };
+  if server.contains('=') {
+    for part in server.split(';') {
+      if let Some((scheme, addr)) = part.split_once('=') {
+        if let Some(authority) = proxy_authority(addr) {
+          mapped_proxies.insert(scheme.trim().to_lowercase(), authority);
+        }
+      }
+    }
+  } else if let Some(authority) = proxy_authority(&server) {
+    mapped_proxies.insert("http".to_string(), authority.clone());
+    mapped_proxies.insert("https".to_string(), authority);
+  }
+}
+
 #[tauri::command]
 pub async fn network_get_system_proxy_url() -> Result<HashMap<String, String>, ()> {
-  let proxies = reqwest::get_system_proxy_map();
-  let mut mapped_proxies: HashMap<String, String> = HashMap::with_capacity(proxies.len());
+  let mut mapped_proxies: HashMap<String, String> = HashMap::new();
 
-  for (key, value) in proxies {
-    mapped_proxies.insert(key.clone(), match value {
-      reqwest::ProxyScheme::Http { host, .. } => host.to_string(),
-      reqwest::ProxyScheme::Https { host, .. } => host.to_string(),
-    });
+  for (scheme, var_names) in [
+    ("http", ["HTTP_PROXY", "http_proxy"]),
+    ("https", ["HTTPS_PROXY", "https_proxy"]),
+    ("all", ["ALL_PROXY", "all_proxy"]),
+  ] {
+    for var_name in var_names {
+      if let Ok(value) = std::env::var(var_name) {
+        if let Some(authority) = proxy_authority(&value) {
+          mapped_proxies.insert(scheme.to_string(), authority);
+          break;
+        }
+      }
+    }
   }
+
+  #[cfg(windows)]
+  read_windows_system_proxy(&mut mapped_proxies);
 
   Ok(mapped_proxies)
 }

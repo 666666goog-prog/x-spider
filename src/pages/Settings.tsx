@@ -7,7 +7,6 @@ import { DownloadOutlined, GlobalOutlined } from '@ant-design/icons';
 import Joi from 'joi';
 import { SavePathSelector } from '../components/settings/SavePathSelector';
 import { Button, Input, Switch } from 'antd';
-import { FileNameTemplateInput } from '../components/settings/FileNameTemplateInput';
 import { showInFolder } from '../utils/shell';
 import { path } from '@tauri-apps/api';
 
@@ -30,47 +29,50 @@ export const Settings: React.FC = () => {
           <SavePathSelector required />
         </Item>
         <Item
-          validator={(value) => {
-            return Joi.string()
-              .pattern(
-                // eslint-disable-next-line
-                /^([^\\\/:\*\"<>\|]\\?)+$/,
-              )
-              .message(
-                '文件夹名有误，请检查文件夹名是否正确，文件夹名不能包含以下字符：? * / \\ < > : " |',
-              )
-              .$.pattern(/^\s+$/, { invert: true })
-              .message('文件夹名不能为纯空格！')
-              .allow('')
-              .validate(value).error?.message;
-          }}
-          label="文件夹模板"
-          settingKey="dirTemplate"
-          description="为空时下载的文件直接保存在上方的“保存路径”里面"
+          settingKey="classifyByAuthor"
+          label="按作者分文件夹"
+          valuePropName="checked"
+          description="每个账号一个文件夹"
         >
-          <FileNameTemplateInput />
+          <Switch />
         </Item>
         <Item
-          settingKey="fileNameTemplate"
-          label="文件名模板"
-          validator={(value) => {
-            return Joi.string()
-              .pattern(
-                // eslint-disable-next-line
-                /^[^\\\/:\*\"<>\|]+$/,
-              )
-              .message(
-                '文件名有误，请检查文件名是否正确，文件名不能包含以下字符：? * / \\ < > : " |',
-              )
-              .$.pattern(/^\s+$/, { invert: true })
-              .message('文件名不能为纯空格！')
-              .messages({
-                'string.empty': '请填写保存文件名模板',
-              })
-              .validate(value).error?.message;
-          }}
+          settingKey="classifyByType"
+          label="按类型分文件夹"
+          valuePropName="checked"
+          description="图片、视频、动图分开存放"
         >
-          <FileNameTemplateInput />
+          <Switch />
+        </Item>
+        <Item
+          settingKey="classifyByDate"
+          label="按日期分文件夹"
+          valuePropName="checked"
+          description="再按发布日期分，格式 年-月-日"
+        >
+          <Switch />
+        </Item>
+        <Item
+          settingKey="fileNameWithDate"
+          label="文件名带日期"
+          valuePropName="checked"
+        >
+          <Switch />
+        </Item>
+        <Item
+          settingKey="fileNameWithAuthor"
+          label="文件名带作者名"
+          valuePropName="checked"
+        >
+          <Switch />
+        </Item>
+        <Item
+          settingKey="fileNameWithPostId"
+          label="文件名带推文编号"
+          valuePropName="checked"
+          description="关掉后文件名更短，但重名风险变高"
+        >
+          <Switch />
         </Item>
         <Item
           settingKey="sameFileSkip"
