@@ -11,6 +11,12 @@ import {
   stopBrowserLogin,
   waitForLoginCookies,
 } from '../utils/browser-login';
+import {
+  deleteAccountCookie,
+  listSavedAccounts,
+  loadAccountCookie,
+  saveAccountCookie,
+} from '../utils/account-store';
 import clsx from 'clsx';
 
 export const Account: React.FC = () => {
@@ -27,6 +33,8 @@ export const Account: React.FC = () => {
   const [waitingStatus, setWaitingStatus] = useState('');
   const [pasteText, setPasteText] = useState('');
   const [pasteLoading, setPasteLoading] = useState(false);
+  const [savedAccounts, setSavedAccounts] = useState<string[]>([]);
+  const [switchingName, setSwitchingName] = useState('');
   const stopWaitingRef = useRef(false);
   const { message } = App.useApp();
 
@@ -39,6 +47,9 @@ export const Account: React.FC = () => {
         try {
           const info = await getAccountInfo(cookieString);
           setAccountInfo(info);
+          // Keep a plain-text copy of this account's cookie in the data
+          // folder, so it can be switched back to later in one click.
+          saveAccountCookie(info.screenName, cookieString).catch(() => {});
         } catch (err: any) {
           message.error('获取账号信息失败，请检查 Cookie 或代理配置是否正确');
           log.error(err);
@@ -103,6 +114,40 @@ export const Account: React.FC = () => {
         // ignore
       }
     }
+  };
+
+  useEffect(() => {
+    if (modalOpen) {
+      listSavedAccounts()
+        .then(setSavedAccounts)
+        .catch(() => setSavedAccounts([]));
+    }
+  }, [modalOpen]);
+
+  const handleSwitchAccount = async (name: string) => {
+    setSwitchingName(name);
+    try {
+      const cookie = await loadAccountCookie(name);
+      if (!cookie) {
+        message.error('这个账号的登录文件不见了，请重新登录一次');
+        return;
+      }
+      const info = await getAccountInfo(cookie);
+      setAccountInfo(info);
+      setCookieString(cookie);
+      setModalOpen(false);
+      message.success(`已切换到：@${info.screenName}`);
+    } catch (err: any) {
+      log.error(err);
+      message.error('切换失败，这个账号的登录可能已经过期，请重新登录一次');
+    } finally {
+      setSwitchingName('');
+    }
+  };
+
+  const handleDeleteAccount = async (name: string) => {
+    await deleteAccountCookie(name).catch(() => {});
+    setSavedAccounts(await listSavedAccounts().catch(() => []));
   };
 
   const handleCancelWaiting = async () => {
@@ -258,6 +303,30 @@ export const Account: React.FC = () => {
         >
           保存并校验
         </Button>
+        {savedAccounts.length > 0 && (
+          <>
+            <Divider />
+            <p className="mb-2">
+              已保存的账号，点一下就切换，不用重新登录（登录文件存在软件目录的
+              accounts 文件夹里）：
+            </p>
+            {savedAccounts.map((name) => (
+              <div key={name} className="flex items-center gap-2 mb-2">
+                <Button
+                  block
+                  loading={switchingName === name}
+                  onClick={() => handleSwitchAccount(name)}
+                >
+                  @{name}
+                  {accountInfo?.screenName === name ? '（当前）' : ''}
+                </Button>
+                <Button danger onClick={() => handleDeleteAccount(name)}>
+                  删除
+                </Button>
+              </div>
+            ))}
+          </>
+        )}
       </Modal>
     </>
   );

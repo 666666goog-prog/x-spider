@@ -44,7 +44,7 @@ export const Homepage: React.FC = () => {
       addSearchHistory(sn);
     } catch (err: any) {
       log.error(err);
-      message.error('加载失败，请检查用户 ID 是否正确');
+      message.error(`加载失败：${err?.message || '请检查用户 ID 是否正确'}`);
     }
   };
 

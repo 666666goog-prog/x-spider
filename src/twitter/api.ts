@@ -34,10 +34,30 @@ function getCommonHeaders(withCredentials = true): Record<string, string> {
   };
 }
 
+function describeHttpError(response: Response): string {
+  const body: any = response.body;
+  const apiMessage = Array.isArray(body?.errors)
+    ? body.errors[0]?.message
+    : undefined;
+  if (response.status === 429) {
+    return '操作太频繁，被 X 临时限制了，请等几分钟再试';
+  }
+  if (apiMessage) {
+    return `X 返回错误（${response.status}）：${apiMessage}`;
+  }
+  if (response.status === 403) {
+    return '请求被 X 拒绝（403），可能是当前登录账号被冻结或受限';
+  }
+  if (response.status === 404) {
+    return '找不到这个账号（404）';
+  }
+  return `请求失败（状态 ${response.status}）`;
+}
+
 function ensureResponse(response: Response) {
   if (response.status >= 400) {
     log.error(response);
-    throw new Error(`Response error: status=${response.status}`);
+    throw new Error(describeHttpError(response));
   }
 }
 
@@ -96,10 +116,20 @@ export async function getUser(screenName: string): Promise<TwitterUser> {
   });
   ensureResponse(resp);
 
-  const data = R.path(['data', 'user', 'result', 'legacy'])(resp.body) as any;
+  const result = R.path<any>(['data', 'user', 'result'])(resp.body);
+  const data = result?.legacy;
 
   if (!data) {
-    throw new Error('找不到该用户');
+    if (result?.__typename === 'UserUnavailable') {
+      if (result?.reason === 'Suspended') {
+        throw new Error('该账号已被 X 冻结，读不到它的内容');
+      }
+      if (result?.reason === 'Deactivated') {
+        throw new Error('该账号已经注销了');
+      }
+      throw new Error('该账号当前看不了（可能被冻结、注销或设为私密）');
+    }
+    throw new Error('找不到该用户，请检查用户名是否写对');
   }
 
   return {
