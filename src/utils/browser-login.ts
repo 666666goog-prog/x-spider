@@ -1,10 +1,26 @@
-import { invoke, path } from '@tauri-apps/api';
+import { fs, invoke, path } from '@tauri-apps/api';
 import { stringifyCookie } from './cookie';
 import { getDataBaseDir } from './data-dir';
 import { delay } from './index';
 
-export async function startBrowserLogin(): Promise<void> {
+export async function startBrowserLogin(fresh = false): Promise<void> {
   const baseDir = await getDataBaseDir();
+  if (fresh) {
+    // A brand-new profile folder, wiped first: the browser opens with no
+    // session at all, so a different account can be logged in instead of
+    // the previous one being read back instantly.
+    const freshDir = await path.join(baseDir, 'browser_profile_fresh');
+    try {
+      await stopBrowserLogin();
+    } catch {
+      // ignore
+    }
+    if (await fs.exists(freshDir)) {
+      await fs.removeDir(freshDir, { recursive: true }).catch(() => {});
+    }
+    await invoke('start_browser_login', { profileDir: freshDir });
+    return;
+  }
   const profileDir = await path.join(baseDir, 'browser_profile');
   await invoke('start_browser_login', { profileDir });
 }

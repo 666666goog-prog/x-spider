@@ -60,12 +60,12 @@ export const Account: React.FC = () => {
     })();
   }, [cookieString]);
 
-  const handleBrowserLogin = async () => {
+  const handleBrowserLogin = async (fresh = false) => {
     stopWaitingRef.current = false;
     setWaiting(true);
     setWaitingStatus('');
     try {
-      await startBrowserLogin();
+      await startBrowserLogin(fresh);
     } catch (err: any) {
       setWaiting(false);
       log.error(err);
@@ -270,14 +270,26 @@ export const Account: React.FC = () => {
           X，登录成功后这里会自动完成，不用做别的。
         </p>
         {!waiting ? (
-          <Button
-            type="primary"
-            block
-            className="mt-4"
-            onClick={handleBrowserLogin}
-          >
-            打开浏览器登录
-          </Button>
+          <>
+            <Button
+              type="primary"
+              block
+              className="mt-4"
+              onClick={() => handleBrowserLogin(false)}
+            >
+              打开浏览器登录
+            </Button>
+            <Button
+              block
+              className="mt-3"
+              onClick={() => handleBrowserLogin(true)}
+            >
+              登录其他账号
+            </Button>
+            <p className="mt-2 text-xs text-gray-500">
+              上面那个浏览器里记着上一个登录的账号；要换新账号，用「登录其他账号」打开一个干净的浏览器。已经存过的账号直接在下面点名字切换就行。
+            </p>
+          </>
         ) : (
           <div className="mt-4">
             <p role="status">
