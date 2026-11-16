@@ -12,6 +12,7 @@ fn main() {
             browser_login::start_browser_login,
             browser_login::stop_browser_login,
             browser_login::cdp_ws_url,
+            browser_login::poll_login_cookies,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -61,4 +61,11 @@ export interface Settings_V3 {
   };
 }
 
-export type Settings = Settings_V3;
+export interface Settings_V4 extends Settings_V3 {
+  download: Settings_V3['download'] & {
+    classifyByPost: boolean;
+    fileNameWithContent: boolean;
+  };
+}
+
+export type Settings = Settings_V4;

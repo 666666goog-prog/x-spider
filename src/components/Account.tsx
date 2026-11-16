@@ -24,6 +24,7 @@ export const Account: React.FC = () => {
   );
   const [loading, setLoading] = useState(false);
   const [waiting, setWaiting] = useState(false);
+  const [waitingStatus, setWaitingStatus] = useState('');
   const [pasteText, setPasteText] = useState('');
   const [pasteLoading, setPasteLoading] = useState(false);
   const stopWaitingRef = useRef(false);
@@ -51,6 +52,7 @@ export const Account: React.FC = () => {
   const handleBrowserLogin = async () => {
     stopWaitingRef.current = false;
     setWaiting(true);
+    setWaitingStatus('');
     try {
       await startBrowserLogin();
     } catch (err: any) {
@@ -62,12 +64,19 @@ export const Account: React.FC = () => {
       return;
     }
 
-    const result = await waitForLoginCookies(() => stopWaitingRef.current);
+    const { cookie: result, lastError } = await waitForLoginCookies(
+      () => stopWaitingRef.current,
+      setWaitingStatus,
+    );
 
     if (!result) {
       setWaiting(false);
       if (!stopWaitingRef.current) {
-        message.error('等待登录超时，请再试一次');
+        message.error(
+          lastError
+            ? `自动读取没成功（${lastError}），可以改用下面粘贴 Cookie 的办法`
+            : '等待登录超时，请再试一次',
+        );
         try {
           await stopBrowserLogin();
         } catch {
@@ -226,7 +235,9 @@ export const Account: React.FC = () => {
           </Button>
         ) : (
           <div className="mt-4">
-            <p role="status">等待登录中…在打开的窗口里完成登录即可</p>
+            <p role="status">
+              {waitingStatus || '等待登录中…在打开的窗口里完成登录即可'}
+            </p>
             <Button block className="mt-3" onClick={handleCancelWaiting}>
               取消
             </Button>

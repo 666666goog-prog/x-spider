@@ -15,8 +15,10 @@ export const DEFAULT_SETTINGS: Settings = {
     classifyByAuthor: true,
     classifyByType: true,
     classifyByDate: false,
+    classifyByPost: true,
     fileNameWithDate: true,
     fileNameWithAuthor: true,
+    fileNameWithContent: true,
     fileNameWithPostId: true,
   },
   app: {
@@ -26,4 +28,4 @@ export const DEFAULT_SETTINGS: Settings = {
   },
 };
 
-export const CURRENT_SETTINGS_VERSION = 3;
+export const CURRENT_SETTINGS_VERSION = 4;

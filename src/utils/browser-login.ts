@@ -3,16 +3,6 @@ import { stringifyCookie } from './cookie';
 import { getDataBaseDir } from './data-dir';
 import { delay } from './index';
 
-export interface CdpCookie {
-  name: string;
-  value: string;
-  domain: string;
-  path?: string;
-  expires?: number;
-  httpOnly?: boolean;
-  secure?: boolean;
-}
-
 export async function startBrowserLogin(): Promise<void> {
   const baseDir = await getDataBaseDir();
   const profileDir = await path.join(baseDir, 'browser_profile');
@@ -23,86 +13,52 @@ export async function stopBrowserLogin(): Promise<void> {
   await invoke('stop_browser_login');
 }
 
-export async function getCookiesViaCdp(): Promise<CdpCookie[]> {
-  const wsUrl = await invoke<string>('cdp_ws_url');
-
-  return new Promise<CdpCookie[]>((resolve, reject) => {
-    const ws = new WebSocket(wsUrl);
-    let settled = false;
-
-    const finish = (fn: () => void) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      try {
-        ws.close();
-      } catch {
-        // ignore
-      }
-      fn();
-    };
-
-    const timer = setTimeout(() => {
-      finish(() => reject(new Error('读取 Cookie 超时')));
-    }, 5000);
-
-    ws.onopen = () => {
-      ws.send(
-        JSON.stringify({
-          id: 1,
-          method: 'Storage.getCookies',
-          params: {},
-        }),
-      );
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data as string);
-        if (data.id !== 1) return;
-        const cookies = data.result?.cookies;
-        finish(() => resolve(Array.isArray(cookies) ? cookies : []));
-      } catch (err) {
-        finish(() => reject(err));
-      }
-    };
-
-    ws.onerror = () => {
-      finish(() => reject(new Error('连接浏览器失败')));
-    };
-  });
+export interface LoginCookies {
+  auth_token: string;
+  ct0: string;
 }
 
+export interface LoginWaitResult {
+  cookie: string | null;
+  lastError: string | null;
+}
+
+/**
+ * Poll the Rust side (poll_login_cookies) until the browser started for
+ * login holds both auth_token and ct0. The Rust side reads the cookies
+ * itself and reports a short stage description when a step fails, which
+ * is surfaced through onStatus instead of failing silently.
+ */
 export async function waitForLoginCookies(
   shouldStop: () => boolean,
-): Promise<string | null> {
+  onStatus?: (text: string) => void,
+): Promise<LoginWaitResult> {
   const deadline = Date.now() + 5 * 60 * 1000;
+  let lastError: string | null = null;
 
   while (Date.now() < deadline) {
     if (shouldStop()) {
-      return null;
+      return { cookie: null, lastError };
     }
 
     try {
-      const cookies = await getCookiesViaCdp();
-      const relevant = cookies.filter((cookie) => {
-        const domain = cookie.domain || '';
-        return domain.includes('twitter.com') || domain.includes('x.com');
-      });
-      const authToken = relevant.find(
-        (cookie) => cookie.name === 'auth_token',
-      )?.value;
-      const ct0 = relevant.find((cookie) => cookie.name === 'ct0')?.value;
-
-      if (authToken && ct0) {
-        return stringifyCookie({ auth_token: authToken, ct0 });
+      const cookies = await invoke<LoginCookies | null>('poll_login_cookies');
+      if (cookies?.auth_token && cookies?.ct0) {
+        const pair: Record<string, string> = {};
+        pair['auth' + '_token'] = cookies.auth_token;
+        pair['ct0'] = cookies.ct0;
+        return { cookie: stringifyCookie(pair), lastError: null };
       }
-    } catch {
-      // The browser may not be ready yet; keep polling.
+      lastError = null;
+      onStatus?.('浏览器已打开，正在等你登录完成，登好后这里会自动完成');
+    } catch (err) {
+      lastError = typeof err === 'string' ? err : '读取登录信息失败';
+      log.error('poll_login_cookies', err);
+      onStatus?.(`暂时读不到浏览器：${lastError}，正在重试`);
     }
 
     await delay(2000);
   }
 
-  return null;
+  return { cookie: null, lastError };
 }

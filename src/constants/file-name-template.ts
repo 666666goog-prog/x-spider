@@ -134,7 +134,7 @@ export const REPLACER_MAP: Record<
       const paramTrim = Number(params.t);
       const trimLen = Number.isNaN(paramTrim) ? 32 : Math.floor(paramTrim);
       return data.post.fullText
-        ? unicodeSubstring(data.post.fullText, 0, trimLen)
+        ? unicodeSubstring(data.post.fullText.replace(/\s+/g, ' '), 0, trimLen)
         : '';
     },
   },

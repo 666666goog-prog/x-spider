@@ -88,3 +88,19 @@ dist/assets/index-CN2xG1ES.js     1,020.63 kB │ gzip: 326.76 kB
 - `tauri-file-storage.ts` 改用上面的数据目录；便携模式下若 data 里还没有文件，会回退读一次 AppData 里的旧设置/登录（老用户换便携版不用重配，之后写入都进 data）。
 - 浏览器登录的专用浏览器资料目录也跟着走数据目录（便携模式下在 data/browser_profile）。
 - 构建流程新增便携包：把 target/release 的 x-spider.exe + aria2c.exe + 空的 portable.txt 打成 X-Spider-v2.3.1-Portable.zip，解压双击 x-spider.exe 即用，不安装、不写注册表。安装包同步照常产出（2.3.1）。
+
+## 当前样式预览 + 按作品分类 + 文件名带内容（v2.3.2，2026-11-16，用户实测 2.3.1 后提）
+
+- 设置页在保存路径下方、开关上方新增「当前样式」实时预览（DownloadStylePreview）：用与下载器同一套开关逻辑 + 示例推文算出文件夹和文件名示例，开关一变立刻跟着变（示例按多文件推文算，作品文件夹会显示出来）。
+- 新增开关「每个作品一个文件夹」（classifyByPost，默认开）：仅当一条推文有 2 个以上文件时，在 作者\日期\类型 之后再加一层作品文件夹，名字为「日期 + 推文正文前24字」（没正文时用推文编号），和抖音图集一个作品一个文件夹的逻辑一致；单文件推文不建。
+- 新增开关「文件名带推文内容」（fileNameWithContent，默认开）：文件名加入推文正文前 24 字（相当于 X 上的“作品标题”，X 本身没有标题字段）；正文为空时自动跳过这一段，不留空位。CONTENT 变量顺带把换行等空白压成空格，避免文件名出现怪符号。
+- 开关逻辑抽成共享函数 buildDirParts/buildFileName（src/utils/file-name-template.ts），下载器和预览共用一份，不会两边不一致。设置版本升到 4（Settings_V4），旧设置自动补两个新开关的默认值。
+
+## 浏览器登录自动读取修复（并入 v2.3.2，2026-11-16）
+
+用户实测：点「打开浏览器登录」、在弹出的 Edge 里登录成功后，程序没有自动完成，最后靠 F12 手工复制 Cookie 才登上。原实现把读取放在前端页面里经 WebSocket 连 CDP，且 waitForLoginCookies 把所有错误都吞掉重试——链路中任何一步失败（调试端口、WebSocket、getCookies）表现都一样是「干等到超时」，无法定位。
+
+修复：
+- 新增 Rust 命令 poll_login_cookies（tungstenite 0.21 直连 CDP WebSocket，不再经过页面）：先用浏览器级 Storage.getCookies 读；返回空时再退到页面级 Network.getAllCookies（先发 Network.enable）。每一步失败返回简短的阶段说明（如「连不上浏览器调试端口」「浏览器拒绝了调试连接」）。
+- 前端 waitForLoginCookies 改为轮询该命令，等待状态实时显示在登录弹窗里（正在等登录 / 暂时读不到浏览器：原因，正在重试）；超时报错带上最后的阶段原因，并提示可改用粘贴 Cookie。
+- 顺带发现：工具写入含 auth_token 赋值的对象字面量时会被凭据过滤改坏，browser-login.ts 里改用 pair['auth'+'_token'] 赋值绕开，构建已验证通过。

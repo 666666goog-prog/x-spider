@@ -6,6 +6,7 @@ import { Item } from '../components/settings/Item';
 import { DownloadOutlined, GlobalOutlined } from '@ant-design/icons';
 import Joi from 'joi';
 import { SavePathSelector } from '../components/settings/SavePathSelector';
+import { DownloadStylePreview } from '../components/settings/DownloadStylePreview';
 import { Button, Input, Switch } from 'antd';
 import { showInFolder } from '../utils/shell';
 import { path } from '@tauri-apps/api';
@@ -28,6 +29,7 @@ export const Settings: React.FC = () => {
         >
           <SavePathSelector required />
         </Item>
+        <DownloadStylePreview />
         <Item
           settingKey="classifyByAuthor"
           label="按作者分文件夹"
@@ -53,6 +55,14 @@ export const Settings: React.FC = () => {
           <Switch />
         </Item>
         <Item
+          settingKey="classifyByPost"
+          label="每个作品一个文件夹"
+          valuePropName="checked"
+          description="一条推文有多个文件时，单独建一个文件夹装在一起；只有一个文件的推文不建"
+        >
+          <Switch />
+        </Item>
+        <Item
           settingKey="fileNameWithDate"
           label="文件名带日期"
           valuePropName="checked"
@@ -63,6 +73,14 @@ export const Settings: React.FC = () => {
           settingKey="fileNameWithAuthor"
           label="文件名带作者名"
           valuePropName="checked"
+        >
+          <Switch />
+        </Item>
+        <Item
+          settingKey="fileNameWithContent"
+          label="文件名带推文内容"
+          valuePropName="checked"
+          description="带上推文正文的前 24 个字，相当于作品标题；推文没文字时自动不带"
         >
           <Switch />
         </Item>

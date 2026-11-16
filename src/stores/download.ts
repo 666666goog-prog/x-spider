@@ -12,7 +12,7 @@ import { AriaStatus, aria2 } from '../utils/aria2';
 import { getUserMedias, getUserTweets } from '../twitter/api';
 import { useSettingsStore } from './settings';
 import { getDownloadUrl } from '../twitter/utils';
-import { resolveVariables } from '../utils/file-name-template';
+import { buildDirParts, buildFileName } from '../utils/file-name-template';
 import { FileNameTemplateData } from '../interfaces/FileNameTemplateData';
 import dayjs from 'dayjs';
 import { notification as antNotification } from 'antd';
@@ -60,38 +60,16 @@ async function prepareDownloadTask({
     post,
   };
   const downloadSettings = settings.download;
-  const dirSegments: string[] = [];
-  if (downloadSettings.classifyByAuthor ?? true) {
-    dirSegments.push('%USER_SCREEN_NAME%');
-  }
-  if (downloadSettings.classifyByDate ?? false) {
-    dirSegments.push('%POST_TIME,d=1%');
-  }
-  if (downloadSettings.classifyByType ?? true) {
-    dirSegments.push('%MEDIA_TYPE%');
-  }
-  const dirTemplate = dirSegments.join('\\');
-  const resolvedDirName = dirTemplate
-    ? resolveVariables(dirTemplate, templateData)
-    : '';
-  log().info('resolved dirName', resolvedDirName);
-  const dir = await path.join(settings.download.saveDirBase, resolvedDirName);
+  const isMultiMedia = (post.medias?.length ?? 0) > 1;
+  const dirParts = buildDirParts(downloadSettings, templateData, isMultiMedia);
+  log().info('resolved dirParts', dirParts);
+  const dir =
+    dirParts.length > 0
+      ? await path.join(settings.download.saveDirBase, ...dirParts)
+      : settings.download.saveDirBase;
   log().info('resolved dir', dir);
 
-  const fileNameSegments: string[] = [];
-  if (downloadSettings.fileNameWithDate ?? true) {
-    fileNameSegments.push('%POST_TIME%');
-  }
-  if (downloadSettings.fileNameWithAuthor ?? true) {
-    fileNameSegments.push('%USER_SCREEN_NAME%');
-  }
-  fileNameSegments.push(
-    (downloadSettings.fileNameWithPostId ?? true)
-      ? '%POST_ID%-%MEDIA_INDEX%%EXT%'
-      : '%MEDIA_INDEX%%EXT%',
-  );
-  const fileNameTemplate = fileNameSegments.join(' ');
-  const fileName = resolveVariables(fileNameTemplate, templateData);
+  const fileName = buildFileName(downloadSettings, templateData);
 
   log().info('resolved fileName', fileName);
 

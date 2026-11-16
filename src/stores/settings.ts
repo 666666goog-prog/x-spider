@@ -68,6 +68,14 @@ export const useSettingsStore = create(
           };
         }
 
+        if (version < 4) {
+          state.download = {
+            classifyByPost: true,
+            fileNameWithContent: true,
+            ...state.download,
+          };
+        }
+
         return state;
       },
     },
