@@ -7,6 +7,7 @@ import { TwitterAccountInfo } from '../interfaces/TwitterAccountInfo';
 import { LogoutOutlined } from '@ant-design/icons';
 import { parseCookie, stringifyCookie } from '../utils/cookie';
 import {
+  prepareOtherAccountLogin,
   startBrowserLogin,
   stopBrowserLogin,
   waitForLoginCookies,
@@ -60,12 +61,17 @@ export const Account: React.FC = () => {
     })();
   }, [cookieString]);
 
-  const handleBrowserLogin = async (fresh = false) => {
+  const handleBrowserLogin = async (otherAccount = false) => {
     stopWaitingRef.current = false;
     setWaiting(true);
     setWaitingStatus('');
+    let oldToken: string | null = null;
     try {
-      await startBrowserLogin(fresh);
+      if (otherAccount) {
+        oldToken = await prepareOtherAccountLogin();
+      } else {
+        await startBrowserLogin();
+      }
     } catch (err: any) {
       setWaiting(false);
       log.error(err);
@@ -78,6 +84,7 @@ export const Account: React.FC = () => {
     const { cookie: result, lastError } = await waitForLoginCookies(
       () => stopWaitingRef.current,
       setWaitingStatus,
+      oldToken,
     );
 
     if (!result) {
@@ -287,7 +294,7 @@ export const Account: React.FC = () => {
               登录其他账号
             </Button>
             <p className="mt-2 text-xs text-gray-500">
-              上面那个浏览器里记着上一个登录的账号；要换新账号，用「登录其他账号」打开一个干净的浏览器。已经存过的账号直接在下面点名字切换就行。
+              浏览器里记着上一个登录的账号；点「登录其他账号」会先把它的登录清掉（它的 Cookie 已经存成文件了，不会丢），再打开干净的登录页。已经存过的账号直接在下面点名字切换就行。
             </p>
           </>
         ) : (

@@ -124,6 +124,7 @@ fn cdp_ws_call(
     ws_url: &str,
     method: &str,
     pre_method: Option<&str>,
+    params: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     use std::net::{SocketAddr, TcpStream};
     use std::time::Duration;
@@ -147,7 +148,7 @@ fn cdp_ws_call(
         let pre_request = serde_json::json!({ "id": 2, "method": pre, "params": {} });
         let _ = socket.write_message(Message::Text(pre_request.to_string()));
     }
-    let request = serde_json::json!({ "id": 1, "method": method, "params": {} });
+    let request = serde_json::json!({ "id": 1, "method": method, "params": params });
     socket
         .write_message(Message::Text(request.to_string()))
         .map_err(|_| "向浏览器发送读取请求失败".to_string())?;
@@ -236,7 +237,12 @@ pub async fn poll_login_cookies() -> Result<Option<LoginCookies>, String> {
         .to_string();
 
     let mut browser_level_error: Option<String> = None;
-    match cdp_ws_call(&browser_ws, "Storage.getCookies", None) {
+    match cdp_ws_call(
+        &browser_ws,
+        "Storage.getCookies",
+        None,
+        serde_json::json!({}),
+    ) {
         Ok(result) => {
             if let Some(cookies) = extract_login_cookies(&result) {
                 return Ok(Some(cookies));
@@ -274,7 +280,12 @@ pub async fn poll_login_cookies() -> Result<Option<LoginCookies>, String> {
         .map(|item| item.to_string());
 
     if let Some(page_ws) = page_ws {
-        match cdp_ws_call(&page_ws, "Network.getAllCookies", Some("Network.enable")) {
+        match cdp_ws_call(
+            &page_ws,
+            "Network.getAllCookies",
+            Some("Network.enable"),
+            serde_json::json!({}),
+        ) {
             Ok(result) => {
                 if let Some(cookies) = extract_login_cookies(&result) {
                     return Ok(Some(cookies));
@@ -291,4 +302,42 @@ pub async fn poll_login_cookies() -> Result<Option<LoginCookies>, String> {
         Some(err) => Err(err),
         None => Ok(None),
     }
+}
+
+/// Clear the login browser's cookies and open a fresh login tab, so a
+/// different account can be logged in inside the SAME browser profile.
+/// There is only ever one login browser and one debug port; the earlier
+/// two-profile approach let several browser instances fight over that
+/// single port, and the polls ended up reading whichever instance owned
+/// it instead of the window the user was actually logging into. The
+/// previous account's cookie is already saved to a file by the caller,
+/// so clearing the browser loses nothing. Returns Ok(false) when no
+/// browser answers on the debug port (the caller then wipes the profile
+/// folder on disk and starts the browser itself).
+#[tauri::command]
+pub async fn clear_login_browser() -> Result<bool, String> {
+    let version_url = format!("http://127.0.0.1:{}/json/version", DEBUG_PORT);
+    let version = match cdp_http_json(version_url).await {
+        Ok(value) => value,
+        Err(_) => return Ok(false),
+    };
+    let browser_ws = version
+        .get("webSocketDebuggerUrl")
+        .and_then(|item| item.as_str())
+        .ok_or_else(|| "浏览器调试信息里没有 WebSocket 地址".to_string())?
+        .to_string();
+
+    cdp_ws_call(
+        &browser_ws,
+        "Storage.clearCookies",
+        None,
+        serde_json::json!({}),
+    )?;
+    cdp_ws_call(
+        &browser_ws,
+        "Target.createTarget",
+        None,
+        serde_json::json!({ "url": LOGIN_URL }),
+    )?;
+    Ok(true)
 }
