@@ -1,5 +1,6 @@
 import { fs, path } from '@tauri-apps/api';
 import { PersistStorage } from 'zustand/middleware';
+import { getDataBaseDir, isPortableMode } from '../../utils/data-dir';
 
 async function writeJsonFile<T = any>(filePath: string, value: T) {
   const dir = await path.dirname(filePath);
@@ -21,20 +22,33 @@ async function getJsonFile(filePath: string): Promise<any | null> {
 }
 
 async function resolveFilePath(name: string): Promise<string> {
-  return await path
-    .appDataDir()
-    .then(async (configDir) => await path.join(configDir, `${name}.json`));
+  const baseDir = await getDataBaseDir();
+  return await path.join(baseDir, `${name}.json`);
+}
+
+async function resolveLegacyFilePath(name: string): Promise<string> {
+  const appDataDir = await path.appDataDir();
+  return await path.join(appDataDir, `${name}.json`);
 }
 
 export function createTauriFileStorage<T>(): PersistStorage<T> | undefined {
   return {
     async getItem(name) {
       const filePath = await resolveFilePath(name);
-      if (!(await fs.exists(filePath))) {
-        return null;
+      if (await fs.exists(filePath)) {
+        return await getJsonFile(filePath);
       }
 
-      return await getJsonFile(filePath);
+      // Portable mode with no data yet: fall back to the installed
+      // version's AppData files once, so existing settings/login carry over.
+      if (await isPortableMode()) {
+        const legacyFilePath = await resolveLegacyFilePath(name);
+        if (await fs.exists(legacyFilePath)) {
+          return await getJsonFile(legacyFilePath);
+        }
+      }
+
+      return null;
     },
     async removeItem(name) {
       const filePath = await resolveFilePath(name);

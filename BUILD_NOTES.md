@@ -80,3 +80,11 @@ dist/assets/index-CN2xG1ES.js     1,020.63 kB │ gzip: 326.76 kB
 - 官方版没有原 fork 的 `get_system_proxy_map`，`src-tauri/src/network.rs` 的 `network_get_system_proxy_url` 改为自实现：先读环境变量代理，再在 Windows 下读注册表 HKCU Internet Settings 的系统代理（新增 windows-only 依赖 winreg 0.52），返回 host:port 给前端（前端拼 http:// 前缀给 aria2 用），行为与原版一致。
 - 新增 `.github/workflows/build-windows-test.yml`：手动触发的 Windows 构建，只产出 NSIS 安装包 artifact，不发 Release、不改版本号。
 - Rust 本地验证：rustfmt 解析通过（语法层）；本机 Linux 缺 Tauri 4.0 系统库无法完整 cargo check，以 GitHub Windows 构建为最终验证。
+
+## 便携版（v2.3.1，2026-11-16）
+
+- 版本 2.3.0 → 2.3.1。
+- 新增 `src/utils/data-dir.ts`：启动时看 exe 同目录有没有 `portable.txt`——有则进入便携模式，设置/登录状态改存 exe 同目录的 `data` 文件夹；没有则和原来一样存 AppData（安装版行为不变）。
+- `tauri-file-storage.ts` 改用上面的数据目录；便携模式下若 data 里还没有文件，会回退读一次 AppData 里的旧设置/登录（老用户换便携版不用重配，之后写入都进 data）。
+- 浏览器登录的专用浏览器资料目录也跟着走数据目录（便携模式下在 data/browser_profile）。
+- 构建流程新增便携包：把 target/release 的 x-spider.exe + aria2c.exe + 空的 portable.txt 打成 X-Spider-v2.3.1-Portable.zip，解压双击 x-spider.exe 即用，不安装、不写注册表。安装包同步照常产出（2.3.1）。

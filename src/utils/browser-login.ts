@@ -1,5 +1,6 @@
 import { invoke, path } from '@tauri-apps/api';
 import { stringifyCookie } from './cookie';
+import { getDataBaseDir } from './data-dir';
 import { delay } from './index';
 
 export interface CdpCookie {
@@ -13,8 +14,8 @@ export interface CdpCookie {
 }
 
 export async function startBrowserLogin(): Promise<void> {
-  const appDataDir = await path.appDataDir();
-  const profileDir = await path.join(appDataDir, 'browser_profile');
+  const baseDir = await getDataBaseDir();
+  const profileDir = await path.join(baseDir, 'browser_profile');
   await invoke('start_browser_login', { profileDir });
 }
 
