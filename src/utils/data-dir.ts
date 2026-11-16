@@ -1,37 +1,36 @@
-import { fs, path } from '@tauri-apps/api';
+import { invoke } from '@tauri-apps/api';
 
-let cachedBaseDir: Promise<string> | null = null;
-let portableMode = false;
+export interface DataDirInfo {
+  dataDir: string;
+  portable: boolean;
+}
 
-async function resolveDataBaseDir(): Promise<string> {
-  try {
-    const exeDir = await path.executableDir();
-    const markerPath = await path.join(exeDir, 'portable.txt');
-    if (await fs.exists(markerPath)) {
-      portableMode = true;
-      return await path.join(exeDir, 'data');
-    }
-  } catch (err) {
-    // Fall back to the normal app data dir below.
+let cachedInfo: Promise<DataDirInfo> | null = null;
+
+function resolveDataDirInfo(): Promise<DataDirInfo> {
+  if (!cachedInfo) {
+    cachedInfo = invoke<DataDirInfo>('get_data_dir_info');
   }
-  portableMode = false;
-  return await path.appDataDir();
+  return cachedInfo;
 }
 
 /**
- * Where settings / login state live.
- * Portable builds ship a `portable.txt` next to the exe: then everything is
- * stored in a `data` folder beside the exe, so the whole folder can be
- * copied around. Without the marker the historical AppData location is used.
+ * Where settings / login state live. The decision is made by the Rust
+ * command `get_data_dir_info`: portable builds ship a `portable.txt`
+ * next to the exe and then everything is stored in a `data` folder
+ * beside the exe; without the marker the normal app data dir is used.
+ * (The frontend path API once reported a wrong executable location,
+ * which sent portable data to the system dir — do not re-implement
+ * this check in TypeScript.)
  */
-export function getDataBaseDir(): Promise<string> {
-  if (!cachedBaseDir) {
-    cachedBaseDir = resolveDataBaseDir();
-  }
-  return cachedBaseDir;
+export function getDataDirInfo(): Promise<DataDirInfo> {
+  return resolveDataDirInfo();
+}
+
+export async function getDataBaseDir(): Promise<string> {
+  return (await resolveDataDirInfo()).dataDir;
 }
 
 export async function isPortableMode(): Promise<boolean> {
-  await getDataBaseDir();
-  return portableMode;
+  return (await resolveDataDirInfo()).portable;
 }

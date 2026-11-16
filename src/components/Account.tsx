@@ -18,6 +18,7 @@ import {
   loadAccountCookie,
   saveAccountCookie,
 } from '../utils/account-store';
+import { getDataDirInfo } from '../utils/data-dir';
 import clsx from 'clsx';
 
 export const Account: React.FC = () => {
@@ -36,6 +37,7 @@ export const Account: React.FC = () => {
   const [pasteLoading, setPasteLoading] = useState(false);
   const [savedAccounts, setSavedAccounts] = useState<string[]>([]);
   const [switchingName, setSwitchingName] = useState('');
+  const [dataDirText, setDataDirText] = useState('');
   const stopWaitingRef = useRef(false);
   // The cookie a login/switch/paste handler has just verified itself.
   // The cookieString effect below skips it, instead of verifying the
@@ -178,6 +180,9 @@ export const Account: React.FC = () => {
       listSavedAccounts()
         .then(setSavedAccounts)
         .catch(() => setSavedAccounts([]));
+      getDataDirInfo()
+        .then((info) => setDataDirText(info.dataDir))
+        .catch(() => setDataDirText(''));
     }
   }, [modalOpen]);
 
@@ -407,6 +412,13 @@ export const Account: React.FC = () => {
               </div>
             ))}
           </>
+        )}
+        {dataDirText && (
+          <p className="mt-4 text-xs text-gray-500">
+            数据保存在：{dataDirText}
+            ，账号的 Cookie 文件在里面的 accounts
+            文件夹里，可以直接拷出来导出。
+          </p>
         )}
       </Modal>
     </>
