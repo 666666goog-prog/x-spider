@@ -38,7 +38,7 @@ jobs:
           $portableDir = "portable/X-Spider-v2.3.1-Portable"
           New-Item -ItemType Directory -Force $portableDir | Out-Null
           Copy-Item "src-tauri/target/release/x-spider.exe" $portableDir
-          Copy-Item "src-tauri/target/release/aria2c.exe" $portableDir
+          Copy-Item "src-tauri/binaries/aria2c-x86_64-pc-windows-msvc.exe" "$portableDir/aria2c.exe"
           New-Item -ItemType File -Force "$portableDir/portable.txt" | Out-Null
           Compress-Archive -Path $portableDir -DestinationPath "X-Spider-v2.3.1-Portable.zip"
       - name: Upload portable version
