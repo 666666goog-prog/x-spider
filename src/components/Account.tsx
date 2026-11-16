@@ -1,17 +1,11 @@
 /* eslint-disable react/prop-types */
-import { App, Avatar, Button, Divider, Input, Modal } from 'antd';
+import { Alert, App, Avatar, Button, Divider, Input, Modal } from 'antd';
 import React, { useEffect, useRef, useState } from 'react';
 import { useAppStateStore } from '../stores/app-state';
 import { getAccountInfo } from '../twitter/api';
 import { TwitterAccountInfo } from '../interfaces/TwitterAccountInfo';
 import { LogoutOutlined } from '@ant-design/icons';
 import { parseCookie, stringifyCookie } from '../utils/cookie';
-import {
-  clearBrowserLoginData,
-  prepareBrowserLogin,
-  stopBrowserLogin,
-  waitForLoginCookies,
-} from '../utils/browser-login';
 import {
   deleteAccountCookie,
   listSavedAccounts,
@@ -30,17 +24,55 @@ export const Account: React.FC = () => {
     null,
   );
   const [loading, setLoading] = useState(false);
-  const [waiting, setWaiting] = useState(false);
-  const [waitingStatus, setWaitingStatus] = useState('');
   const [pasteText, setPasteText] = useState('');
   const [pasteLoading, setPasteLoading] = useState(false);
   const [savedAccounts, setSavedAccounts] = useState<string[]>([]);
   const [switchingName, setSwitchingName] = useState('');
-  const stopWaitingRef = useRef(false);
-  // The cookie a login/switch/paste handler has just verified itself.
-  // The cookieString effect below skips it, instead of verifying the
-  // same cookie a second time and doubling the wait.
+  // The cookie a switch/paste handler has just verified itself. The
+  // cookieString effect below skips it, instead of verifying the same
+  // cookie a second time and doubling the wait.
   const verifiedCookieRef = useRef('');
+  // Dragging the login modal by its title bar with the mouse.
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const dragStateRef = useRef<{
+    startX: number;
+    startY: number;
+    baseX: number;
+    baseY: number;
+  } | null>(null);
+
+  const handleDragMouseDown = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (!target.closest('.ant-modal-header')) {
+      return;
+    }
+    if (target.closest('.ant-modal-close')) {
+      return;
+    }
+    dragStateRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      baseX: dragOffset.x,
+      baseY: dragOffset.y,
+    };
+    const onMove = (ev: MouseEvent) => {
+      const state = dragStateRef.current;
+      if (!state) {
+        return;
+      }
+      setDragOffset({
+        x: state.baseX + ev.clientX - state.startX,
+        y: state.baseY + ev.clientY - state.startY,
+      });
+    };
+    const onUp = () => {
+      dragStateRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
   const { message } = App.useApp();
 
   useEffect(() => {
@@ -66,71 +98,6 @@ export const Account: React.FC = () => {
       }
     })();
   }, [cookieString]);
-
-  const handleBrowserLogin = async () => {
-    stopWaitingRef.current = false;
-    setWaiting(true);
-    setWaitingStatus('');
-    let oldToken: string | null = null;
-    try {
-      oldToken = await prepareBrowserLogin();
-    } catch (err: any) {
-      setWaiting(false);
-      log.error(err);
-      message.error(
-        typeof err === 'string' ? err : '打开浏览器失败，请再试一次',
-      );
-      return;
-    }
-
-    const { cookie: result, lastError } = await waitForLoginCookies(
-      () => stopWaitingRef.current,
-      setWaitingStatus,
-      oldToken,
-    );
-
-    if (!result) {
-      setWaiting(false);
-      if (!stopWaitingRef.current) {
-        message.error(
-          lastError
-            ? `自动读取没成功（${lastError}），可以改用下面粘贴 Cookie 的办法`
-            : '等待登录超时，请再试一次',
-        );
-        try {
-          await stopBrowserLogin();
-        } catch {
-          // ignore
-        }
-      }
-      return;
-    }
-
-    try {
-      const info = await getAccountInfo(result);
-      setAccountInfo(info);
-      // Save the verified cookie as a file right here; the cookieString
-      // effect skips cookies that were already verified (see
-      // verifiedCookieRef), so the save must not be left to it.
-      saveAccountCookie(info.screenName, result).catch(() => {});
-      verifiedCookieRef.current = result;
-      setCookieString(result);
-      // The browser itself keeps no session.
-      await clearBrowserLoginData();
-      setModalOpen(false);
-      message.success(`已登录：@${info.screenName}`);
-    } catch (err: any) {
-      log.error(err);
-      message.error('登录没有成功，请再试一次');
-    } finally {
-      setWaiting(false);
-      try {
-        await stopBrowserLogin();
-      } catch {
-        // ignore
-      }
-    }
-  };
 
   useEffect(() => {
     if (modalOpen) {
@@ -165,23 +132,6 @@ export const Account: React.FC = () => {
   const handleDeleteAccount = async (name: string) => {
     await deleteAccountCookie(name).catch(() => {});
     setSavedAccounts(await listSavedAccounts().catch(() => []));
-  };
-
-  const handleCancelWaiting = async () => {
-    stopWaitingRef.current = true;
-    setWaiting(false);
-    try {
-      await stopBrowserLogin();
-    } catch {
-      // ignore
-    }
-  };
-
-  const handleModalCancel = async () => {
-    if (waiting) {
-      await handleCancelWaiting();
-    }
-    setModalOpen(false);
   };
 
   const handlePasteSave = async () => {
@@ -279,47 +229,33 @@ export const Account: React.FC = () => {
         </section>
       </div>
       <Modal
-        onCancel={handleModalCancel}
+        onCancel={() => setModalOpen(false)}
         open={modalOpen}
         title="登录 X"
         footer={null}
-      >
-        <p className="mt-4">
-          点下面的按钮会打开一个浏览器窗口，在里面像平时一样登录
-          X，登录成功后这里会自动完成，不用做别的。
-        </p>
-        {!waiting ? (
-          <>
-            <Button
-              type="primary"
-              block
-              className="mt-4"
-              onClick={() => handleBrowserLogin()}
-            >
-              打开浏览器登录
-            </Button>
-            <p className="mt-2 text-xs text-gray-500">
-              每次登录前都会先把浏览器里残留的登录清掉，打开的一定是干净的登录页；登录成功后 Cookie 自动存成文件，浏览器里的登录随即清掉。切换账号不用再开浏览器，直接在下面点保存过的账号名字。
-            </p>
-          </>
-        ) : (
-          <div className="mt-4">
-            <p role="status">
-              {waitingStatus || '等待登录中…在打开的窗口里完成登录即可'}
-            </p>
-            <Button block className="mt-3" onClick={handleCancelWaiting}>
-              取消
-            </Button>
+        modalRender={(modal) => (
+          <div
+            style={{
+              transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)`,
+            }}
+            onMouseDown={handleDragMouseDown}
+          >
+            {modal}
           </div>
         )}
-        <Divider />
+      >
+        <p className="mt-4">
+          把整串 Cookie 粘贴到下面，点「保存并校验」就行。登录成功会自动保存这个账号，下次直接在下面点账号名字切换。这个窗口挡住东西时，按住最上面的标题可以用鼠标把它拖开。
+        </p>
         <Input.TextArea
+          className="mt-3"
           rows={4}
-          placeholder="或者把整串 Cookie 粘贴到这里"
+          placeholder="把整串 Cookie 粘贴到这里（要包含 auth_token 和 ct0）"
           value={pasteText}
           onChange={(e) => setPasteText(e.target.value)}
         />
         <Button
+          type="primary"
           block
           className="mt-3"
           loading={pasteLoading}
@@ -327,6 +263,13 @@ export const Account: React.FC = () => {
         >
           保存并校验
         </Button>
+        <Alert
+          className="mt-4"
+          type="warning"
+          showIcon
+          message="账号提示"
+          description="登录用的账号如果已经被 X 冻结（只读状态），它能下的账号只有一部分，有些账号会解析不了、提示加载失败——这是 X 对被冻结账号的限制，不是对方账号有问题，也不是软件坏了。遇到这种情况，换一个没被冻结的账号登录再搜就行。"
+        />
         {savedAccounts.length > 0 && (
           <>
             <Divider />

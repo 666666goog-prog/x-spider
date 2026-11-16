@@ -138,3 +138,9 @@ dist/assets/index-CN2xG1ES.js     1,020.63 kB │ gzip: 326.76 kB
 
 1. 浏览器慢：prepareBrowserLogin 在浏览器没运行时会把整个 browser_profile 目录删掉再启动——每次都是冷资料（Edge 要重建整套资料）+ 删几千个文件，当然慢。改法：永不删资料；浏览器没在跑就用原资料热启动，等它应答后先记下它还留着的旧 token，再就地清 Cookie 并开登录页签（等待循环本来就有忽略旧 token 的守卫，安全不变）。
 2. 切换/登录慢：cookieString 的 effect 会把每个 handler 刚校验过的 Cookie 再校验一遍（getAccountInfo 两次网络往返）。改法：handler 校验成功后用 verifiedCookieRef 标记，effect 跳过已校验的 Cookie；作为配套，浏览器登录和粘贴登录改为在 handler 里直接 saveAccountCookie（原来靠 effect 保存，不能只跳过校验把保存也跳掉）。
+
+## 只留 Cookie 登录（v2.3.9，2026-11-16）
+
+用户决定：不搞内置浏览器登录了。删除全部浏览器登录（前端 browser-login.ts、弹窗按钮与等待流程、Rust browser_login.rs 与命令注册、tungstenite 依赖一并去掉）。登录只剩一条：粘贴整串 Cookie → 校验 → 自动存进 accounts 文件；切换账号点已保存名字（v2.3.8 的单次校验保留）。
+
+另外两件按用户要求：①登录弹窗可拖动——按住弹窗标题栏用鼠标拖（modalRender + transform 实现，不加新依赖），方便粘贴时把窗口挪开；②弹窗里加「账号提示」警告框，写明被 X 冻结（只读）的登录账号只能解析一部分账号、有些会加载失败，是 X 对冻结账号的限制，换没被冻结的账号登录再搜——就是他 A/B 测出的那个结论，固化进软件免得以后再排查。
