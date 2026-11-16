@@ -3,31 +3,18 @@ import { stringifyCookie } from './cookie';
 import { getDataBaseDir } from './data-dir';
 import { delay } from './index';
 
-export async function startBrowserLogin(): Promise<void> {
-  // If a login browser is already answering on the debug port, reuse it.
-  // Starting a second instance would fight over the single debug port,
-  // and the polls could end up reading the wrong window.
-  try {
-    await invoke('cdp_ws_url');
-    return;
-  } catch {
-    // No browser up yet; start one below.
-  }
-  const baseDir = await getDataBaseDir();
-  const profileDir = await path.join(baseDir, 'browser_profile');
-  await invoke('start_browser_login', { profileDir });
-}
-
 /**
- * Prepare the single login browser for a DIFFERENT account. The previous
- * account's cookie has already been saved to a file, so clearing the
- * browser loses nothing: when the browser is running, its cookies are
- * cleared in place and a fresh login tab is opened; when it is not, its
- * profile folder is wiped before it starts. Returns the previous
- * account's auth_token so the wait loop can ignore it if it shows up
- * again (e.g. the clear raced a still-open tab).
+ * Prepare the single login browser for a login. There is only one
+ * browser-login flow: the browser is just a temporary place to log in,
+ * and every verified login is kept as a cookie file instead. So every
+ * login starts from a clean browser — when the browser is running, its
+ * cookies are cleared in place and a fresh login tab is opened; when it
+ * is not, its profile folder is wiped before it starts. Returns the
+ * auth_token that was in the browser beforehand so the wait loop can
+ * ignore it if it shows up again (e.g. the clear raced a still-open
+ * tab).
  */
-export async function prepareOtherAccountLogin(): Promise<string | null> {
+export async function prepareBrowserLogin(): Promise<string | null> {
   let oldToken: string | null = null;
   try {
     const before = await invoke<LoginCookies | null>('poll_login_cookies');
@@ -56,6 +43,19 @@ export async function prepareOtherAccountLogin(): Promise<string | null> {
 
 export async function stopBrowserLogin(): Promise<void> {
   await invoke('stop_browser_login');
+}
+
+/**
+ * After a successful login the verified cookie has been saved to a
+ * file, so clear the browser's own session right away: the browser
+ * keeps nothing, and the next login starts clean either way.
+ */
+export async function clearBrowserLoginData(): Promise<void> {
+  try {
+    await invoke('clear_login_browser_cookies');
+  } catch {
+    // Browser already gone; the next login wipes the profile anyway.
+  }
 }
 
 export interface LoginCookies {

@@ -314,18 +314,21 @@ pub async fn poll_login_cookies() -> Result<Option<LoginCookies>, String> {
 /// so clearing the browser loses nothing. Returns Ok(false) when no
 /// browser answers on the debug port (the caller then wipes the profile
 /// folder on disk and starts the browser itself).
-#[tauri::command]
-pub async fn clear_login_browser() -> Result<bool, String> {
+async fn browser_ws_url() -> Option<String> {
     let version_url = format!("http://127.0.0.1:{}/json/version", DEBUG_PORT);
-    let version = match cdp_http_json(version_url).await {
-        Ok(value) => value,
-        Err(_) => return Ok(false),
-    };
-    let browser_ws = version
+    let version = cdp_http_json(version_url).await.ok()?;
+    version
         .get("webSocketDebuggerUrl")
         .and_then(|item| item.as_str())
-        .ok_or_else(|| "浏览器调试信息里没有 WebSocket 地址".to_string())?
-        .to_string();
+        .map(|item| item.to_string())
+}
+
+#[tauri::command]
+pub async fn clear_login_browser() -> Result<bool, String> {
+    let browser_ws = match browser_ws_url().await {
+        Some(url) => url,
+        None => return Ok(false),
+    };
 
     cdp_ws_call(
         &browser_ws,
@@ -338,6 +341,26 @@ pub async fn clear_login_browser() -> Result<bool, String> {
         "Target.createTarget",
         None,
         serde_json::json!({ "url": LOGIN_URL }),
+    )?;
+    Ok(true)
+}
+
+/// Clear only the login browser's cookies, without opening any tab.
+/// Used right after a successful login: the verified cookie has just
+/// been saved to a file, so the browser itself keeps no session at all
+/// and the next login always starts from a clean browser.
+#[tauri::command]
+pub async fn clear_login_browser_cookies() -> Result<bool, String> {
+    let browser_ws = match browser_ws_url().await {
+        Some(url) => url,
+        None => return Ok(false),
+    };
+
+    cdp_ws_call(
+        &browser_ws,
+        "Storage.clearCookies",
+        None,
+        serde_json::json!({}),
     )?;
     Ok(true)
 }
