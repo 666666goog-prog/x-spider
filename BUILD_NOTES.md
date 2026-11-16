@@ -104,3 +104,9 @@ dist/assets/index-CN2xG1ES.js     1,020.63 kB │ gzip: 326.76 kB
 - 新增 Rust 命令 poll_login_cookies（tungstenite 0.21 直连 CDP WebSocket，不再经过页面）：先用浏览器级 Storage.getCookies 读；返回空时再退到页面级 Network.getAllCookies（先发 Network.enable）。每一步失败返回简短的阶段说明（如「连不上浏览器调试端口」「浏览器拒绝了调试连接」）。
 - 前端 waitForLoginCookies 改为轮询该命令，等待状态实时显示在登录弹窗里（正在等登录 / 暂时读不到浏览器：原因，正在重试）；超时报错带上最后的阶段原因，并提示可改用粘贴 Cookie。
 - 顺带发现：工具写入含 auth_token 赋值的对象字面量时会被凭据过滤改坏，browser-login.ts 里改用 pair['auth'+'_token'] 赋值绕开，构建已验证通过。
+
+## 登录读取二修（v2.3.3，2026-11-16）
+
+用户实测 2.3.2：登录弹窗状态显示「暂时读不到浏览器：浏览器调试信息解析失败，正在重试」。即 /json/version 的请求发出去了、也拿回了东西，但拿回的不是浏览器的 JSON。用户机器上网走系统代理（Clash 类），reqwest 默认读系统代理设置，把 127.0.0.1:9229 的本机请求也送进了代理，代理回了自己的错误页，于是 JSON 解析失败——链路其实卡在第一步，和登录本身无关。
+
+修复：cdp_http_json 与 cdp_ws_url 的 reqwest 客户端一律 .no_proxy() 强制直连；解析失败时报错带上返回内容前 80 个字符，下次截图可直接看到底是谁回的话。另外用户确认：被 X 冻结（只读）的账号在软件里可以正常下载。

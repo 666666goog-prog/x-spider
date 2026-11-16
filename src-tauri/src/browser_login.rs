@@ -67,7 +67,10 @@ pub fn stop_browser_login() -> Result<(), String> {
 #[tauri::command]
 pub async fn cdp_ws_url() -> Result<String, String> {
     let url = format!("http://127.0.0.1:{}/json/version", DEBUG_PORT);
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .build()
+        .map_err(|err| format!("创建网络客户端失败：{}", err))?;
     let response = client
         .get(&url)
         .send()
@@ -91,16 +94,27 @@ pub struct LoginCookies {
 }
 
 async fn cdp_http_json(url: String) -> Result<serde_json::Value, String> {
-    let client = reqwest::Client::new();
+    // CDP endpoints live on this machine only. Never route them through a
+    // system proxy: the proxy answers with its own error page instead of
+    // the browser's JSON (exactly the failure seen in real-machine testing,
+    // where the status line showed a JSON parse failure).
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .build()
+        .map_err(|_| "创建网络客户端失败".to_string())?;
     let response = client
         .get(&url)
         .send()
         .await
         .map_err(|_| "连不上浏览器调试端口".to_string())?;
-    response
-        .json()
+    let text = response
+        .text()
         .await
-        .map_err(|_| "浏览器调试信息解析失败".to_string())
+        .map_err(|_| "读取浏览器调试信息失败".to_string())?;
+    serde_json::from_str(&text).map_err(|_| {
+        let snippet: String = text.chars().take(80).collect();
+        format!("浏览器调试信息解析失败（返回内容：{}）", snippet)
+    })
 }
 
 /// Send one CDP method over a direct WebSocket connection (from Rust, not
