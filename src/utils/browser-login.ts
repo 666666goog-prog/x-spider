@@ -1,4 +1,4 @@
-import { fs, invoke, path } from '@tauri-apps/api';
+import { invoke, path } from '@tauri-apps/api';
 import { stringifyCookie } from './cookie';
 import { getDataBaseDir } from './data-dir';
 import { delay } from './index';
@@ -7,12 +7,13 @@ import { delay } from './index';
  * Prepare the single login browser for a login. There is only one
  * browser-login flow: the browser is just a temporary place to log in,
  * and every verified login is kept as a cookie file instead. So every
- * login starts from a clean browser — when the browser is running, its
- * cookies are cleared in place and a fresh login tab is opened; when it
- * is not, its profile folder is wiped before it starts. Returns the
- * auth_token that was in the browser beforehand so the wait loop can
- * ignore it if it shows up again (e.g. the clear raced a still-open
- * tab).
+ * login starts from a clean browser, but the profile itself is never
+ * wiped — a cold profile made every browser start slow. When the
+ * browser is already running, its cookies are cleared in place; when
+ * it is not, it is started with its existing profile and cleared in
+ * place as soon as it answers. Returns the auth_token that was in the
+ * browser beforehand so the wait loop can ignore it if it shows up
+ * again (e.g. the clear raced a still-open tab).
  */
 export async function prepareBrowserLogin(): Promise<string | null> {
   let oldToken: string | null = null;
@@ -23,20 +24,34 @@ export async function prepareBrowserLogin(): Promise<string | null> {
     // Browser not reachable; nothing to remember.
   }
 
-  let clearedInPlace = false;
   try {
-    clearedInPlace = await invoke<boolean>('clear_login_browser');
+    if (await invoke<boolean>('clear_login_browser')) {
+      return oldToken;
+    }
   } catch {
-    clearedInPlace = false;
+    // Browser not running; start it below.
   }
 
-  if (!clearedInPlace) {
-    const baseDir = await getDataBaseDir();
-    const profileDir = await path.join(baseDir, 'browser_profile');
-    if (await fs.exists(profileDir)) {
-      await fs.removeDir(profileDir, { recursive: true }).catch(() => {});
+  const baseDir = await getDataBaseDir();
+  const profileDir = await path.join(baseDir, 'browser_profile');
+  await invoke('start_browser_login', { profileDir });
+  for (let i = 0; i < 40; i++) {
+    try {
+      const before = await invoke<LoginCookies | null>('poll_login_cookies');
+      if (before?.auth_token) {
+        oldToken = before.auth_token;
+      }
+    } catch {
+      // Still starting up.
     }
-    await invoke('start_browser_login', { profileDir });
+    try {
+      if (await invoke<boolean>('clear_login_browser')) {
+        break;
+      }
+    } catch {
+      // Still starting up.
+    }
+    await delay(500);
   }
   return oldToken;
 }
@@ -54,7 +69,7 @@ export async function clearBrowserLoginData(): Promise<void> {
   try {
     await invoke('clear_login_browser_cookies');
   } catch {
-    // Browser already gone; the next login wipes the profile anyway.
+    // Browser already gone; the next login clears it before use anyway.
   }
 }
 

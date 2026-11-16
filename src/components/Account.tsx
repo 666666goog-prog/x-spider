@@ -37,12 +37,18 @@ export const Account: React.FC = () => {
   const [savedAccounts, setSavedAccounts] = useState<string[]>([]);
   const [switchingName, setSwitchingName] = useState('');
   const stopWaitingRef = useRef(false);
+  // The cookie a login/switch/paste handler has just verified itself.
+  // The cookieString effect below skips it, instead of verifying the
+  // same cookie a second time and doubling the wait.
+  const verifiedCookieRef = useRef('');
   const { message } = App.useApp();
 
   useEffect(() => {
     (async () => {
       if (!cookieString) {
         setAccountInfo(null);
+      } else if (cookieString === verifiedCookieRef.current) {
+        // Just verified by the handler that set it; do not verify again.
       } else {
         setLoading(true);
         try {
@@ -103,9 +109,13 @@ export const Account: React.FC = () => {
     try {
       const info = await getAccountInfo(result);
       setAccountInfo(info);
+      // Save the verified cookie as a file right here; the cookieString
+      // effect skips cookies that were already verified (see
+      // verifiedCookieRef), so the save must not be left to it.
+      saveAccountCookie(info.screenName, result).catch(() => {});
+      verifiedCookieRef.current = result;
       setCookieString(result);
-      // The verified cookie is kept as a file (saved by the cookieString
-      // effect above); the browser itself keeps no session.
+      // The browser itself keeps no session.
       await clearBrowserLoginData();
       setModalOpen(false);
       message.success(`已登录：@${info.screenName}`);
@@ -140,6 +150,7 @@ export const Account: React.FC = () => {
       }
       const info = await getAccountInfo(cookie);
       setAccountInfo(info);
+      verifiedCookieRef.current = cookie;
       setCookieString(cookie);
       setModalOpen(false);
       message.success(`已切换到：@${info.screenName}`);
@@ -197,6 +208,8 @@ export const Account: React.FC = () => {
     try {
       const info = await getAccountInfo(newCookieString);
       setAccountInfo(info);
+      saveAccountCookie(info.screenName, newCookieString).catch(() => {});
+      verifiedCookieRef.current = newCookieString;
       setCookieString(newCookieString);
       setModalOpen(false);
       message.success(`已登录：@${info.screenName}`);
